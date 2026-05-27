@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>身体反応リサーチツール</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="カメラ解析">
+        <div class="camera-stage">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <canvas id="sampleCanvas" aria-hidden="true"></canvas>
+          <div id="permissionPanel" class="permission-panel">
+            <h1>身体反応リサーチツール</h1>
+            <p>
+              カメラ映像を端末内で解析し、標準指標・探索指標・品質指標として時系列で記録します。
+            </p>
+            <button id="startButton" class="primary-button" type="button">カメラを開始</button>
+          </div>
+        </div>
+
+        <div class="timeline-panel">
+          <div class="timeline-header">
+            <div>
+              <span class="label">セッション</span>
+              <strong id="sessionClock">00:00</strong>
+            </div>
+            <div class="status-line">
+              <span id="cameraStatus" class="status-dot"></span>
+              <span id="statusText">待機中</span>
+            </div>
+          </div>
+          <canvas id="chart" width="1200" height="180" aria-label="反応指標の時系列グラフ"></canvas>
+        </div>
+      </section>
+
+      <aside class="control-rail" aria-label="解析コントロール">
+        <section class="panel">
+          <div class="panel-title">
+            <span>被験者/刺激</span>
+          </div>
+          <label>
+            被験者ID
+            <input id="participantId" type="text" autocomplete="off" placeholder="P001" />
+          </label>
+          <label>
+            刺激名
+            <input id="stimulusName" type="text" autocomplete="off" placeholder="広告A / 商品動画1" />
+          </label>
+          <label>
+            メモ
+            <textarea id="sessionNote" rows="3" placeholder="任意の観察メモ"></textarea>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>標準指標</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric">
+              <span>体動量</span>
+              <strong id="motionScore">0</strong>
+            </div>
+            <div class="metric">
+              <span>姿勢変化</span>
+              <strong id="postureScore">0</strong>
+            </div>
+            <div class="metric">
+              <span>顔向き</span>
+              <strong id="headPose">--</strong>
+            </div>
+            <div class="metric">
+              <span>まばたき</span>
+              <strong id="blinkRate">0/min</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>探索/品質指標</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric">
+              <span>顔検出</span>
+              <strong id="facePresence">--</strong>
+            </div>
+            <div class="metric">
+              <span>静止度</span>
+              <strong id="stillnessScore">0</strong>
+            </div>
+            <div class="metric">
+              <span>基準差分</span>
+              <strong id="baselineDelta">--</strong>
+            </div>
+            <div class="metric">
+              <span>品質</span>
+              <strong id="qualityScore">0</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>記録</span>
+          </div>
+          <div class="button-row">
+            <button id="recordButton" type="button" disabled>記録開始</button>
+            <button id="baselineButton" type="button" disabled>基準計測</button>
+          </div>
+          <div class="button-row">
+            <button id="markerButton" type="button" disabled>マーカー</button>
+            <button id="resetBaselineButton" type="button" disabled>基準リセット</button>
+          </div>
+          <div class="button-row">
+            <button id="downloadCsvButton" type="button" disabled>CSV</button>
+            <button id="downloadJsonButton" type="button" disabled>JSON</button>
+          </div>
+          <p class="fine-print">
+            映像は保存しません。保存されるのは推定指標、時刻、入力メモだけです。
+          </p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>解析状態</span>
+          </div>
+          <div id="baselineStatus" class="status-card">基準値: 未計測</div>
+          <ul id="capabilityList" class="capability-list">
+            <li>カメラ: 待機中</li>
+            <li>動き解析: 待機中</li>
+            <li>姿勢推定: CDN読み込み待ち</li>
+            <li>顔推定: CDN読み込み待ち</li>
+          </ul>
+        </section>
+      </aside>
+    </main>
+  </body>
+</html>
