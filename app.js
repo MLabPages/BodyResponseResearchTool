@@ -1,19 +1,29 @@
 const els = {
+  consentPanel: document.getElementById("consentPanel"),
+  consentCheck: document.getElementById("consentCheck"),
+  consentButton: document.getElementById("consentButton"),
   video: document.getElementById("video"),
   overlay: document.getElementById("overlay"),
   sample: document.getElementById("sampleCanvas"),
   chart: document.getElementById("chart"),
   permissionPanel: document.getElementById("permissionPanel"),
   startButton: document.getElementById("startButton"),
+  stopCameraButton: document.getElementById("stopCameraButton"),
   recordButton: document.getElementById("recordButton"),
   baselineButton: document.getElementById("baselineButton"),
   resetBaselineButton: document.getElementById("resetBaselineButton"),
   markerButton: document.getElementById("markerButton"),
   downloadCsvButton: document.getElementById("downloadCsvButton"),
   downloadJsonButton: document.getElementById("downloadJsonButton"),
+  collectorUrl: document.getElementById("collectorUrl"),
+  autoUploadCheck: document.getElementById("autoUploadCheck"),
+  uploadButton: document.getElementById("uploadButton"),
+  clearUploadButton: document.getElementById("clearUploadButton"),
+  uploadStatus: document.getElementById("uploadStatus"),
   participantId: document.getElementById("participantId"),
   stimulusName: document.getElementById("stimulusName"),
   sessionNote: document.getElementById("sessionNote"),
+  cameraFacing: document.getElementById("cameraFacing"),
   motionScore: document.getElementById("motionScore"),
   postureScore: document.getElementById("postureScore"),
   headPose: document.getElementById("headPose"),
@@ -67,12 +77,19 @@ const state = {
   pose: null,
   faceMesh: null,
   busyMl: false,
+  animationFrameId: 0,
+  consented: false,
+  uploadInProgress: false,
+  suppressAutoUploadOnce: false,
+  facingMode: "user",
 };
 
 const sampleSize = { width: 96, height: 72 };
 const maxChartPoints = 240;
 const motionThreshold = 18;
 const baselineDurationMs = 15000;
+const collectorUrlKey = "bodyResponseCollectorUrl";
+const autoUploadKey = "bodyResponseAutoUpload";
 
 function setStatus(text, mode = "idle") {
   els.statusText.textContent = text;
@@ -144,16 +161,23 @@ async function initModels() {
 }
 
 async function startCamera() {
+  if (!state.consented) {
+    setStatus("同意確認が必要です", "warn");
+    return;
+  }
   try {
     setStatus("カメラ許可を確認中", "warn");
+    state.facingMode = els.cameraFacing.value;
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { ideal: state.facingMode } },
       audio: false,
     });
     els.video.srcObject = stream;
     await els.video.play();
     state.startedAt = performance.now();
     els.permissionPanel.style.display = "none";
+    els.startButton.disabled = true;
+    els.stopCameraButton.disabled = false;
     els.recordButton.disabled = false;
     els.baselineButton.disabled = false;
     els.resetBaselineButton.disabled = false;
@@ -161,7 +185,7 @@ async function startCamera() {
     setStatus("解析中", "live");
     fitCanvases();
     await initModels();
-    requestAnimationFrame(loop);
+    state.animationFrameId = requestAnimationFrame(loop);
   } catch (error) {
     console.error(error);
     setStatus("カメラを開始できませんでした", "warn");
@@ -170,9 +194,53 @@ async function startCamera() {
   }
 }
 
+function stopCamera() {
+  if (state.recording) {
+    toggleRecording();
+  }
+  if (state.animationFrameId) {
+    cancelAnimationFrame(state.animationFrameId);
+    state.animationFrameId = 0;
+  }
+  const stream = els.video.srcObject;
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+  }
+  els.video.srcObject = null;
+  state.poseLandmarks = null;
+  state.faceLandmarks = null;
+  state.facePresent = false;
+  state.prevFrame = null;
+  els.permissionPanel.style.display = "";
+  els.startButton.disabled = false;
+  els.stopCameraButton.disabled = true;
+  els.recordButton.disabled = true;
+  els.baselineButton.disabled = true;
+  els.resetBaselineButton.disabled = true;
+  els.markerButton.disabled = true;
+  setStatus("撮影停止", "idle");
+  updateCapabilities();
+}
+
+async function switchCamera() {
+  state.facingMode = els.cameraFacing.value;
+  if (!els.video.srcObject) return;
+  const wasRecording = state.recording;
+  if (wasRecording) {
+    state.suppressAutoUploadOnce = true;
+    toggleRecording();
+  }
+  stopCamera();
+  await startCamera();
+  if (wasRecording) {
+    toggleRecording();
+  }
+}
+
 function loop(now) {
+  if (!els.video.srcObject) return;
   if (!els.video.videoWidth) {
-    requestAnimationFrame(loop);
+    state.animationFrameId = requestAnimationFrame(loop);
     return;
   }
 
@@ -188,7 +256,7 @@ function loop(now) {
   updateBaselineSampling(now);
   updateReadouts();
   maybeRecord(now);
-  requestAnimationFrame(loop);
+  state.animationFrameId = requestAnimationFrame(loop);
 }
 
 async function runModels() {
@@ -451,6 +519,7 @@ function maybeRecord(now) {
   state.lastRecordedAt = now;
   els.downloadCsvButton.disabled = state.rows.length === 0;
   els.downloadJsonButton.disabled = state.rows.length === 0;
+  els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
 }
 
 function currentRow(now, marker) {
@@ -502,6 +571,12 @@ function toggleRecording() {
     setStatus("解析中", "live");
     els.downloadCsvButton.disabled = state.rows.length === 0;
     els.downloadJsonButton.disabled = state.rows.length === 0;
+    els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
+    if (state.suppressAutoUploadOnce) {
+      state.suppressAutoUploadOnce = false;
+    } else if (els.autoUploadCheck.checked && els.collectorUrl.value.trim() && state.rows.length) {
+      uploadRows();
+    }
   }
 }
 
@@ -513,6 +588,7 @@ function addMarker() {
     const now = performance.now();
     state.rows.push(currentRow(now, label));
     state.lastRecordedAt = now;
+    els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
   }
   setStatus(`${label} を追加`, "live");
 }
@@ -548,23 +624,71 @@ function clamp(value, min, max) {
 
 function download(format) {
   if (!state.rows.length) return;
-  const baseName = [
-    "body-response",
-    els.participantId.value.trim() || "participant",
-    new Date().toISOString().replace(/[:.]/g, "-"),
-  ].join("_");
+  const baseName = outputBaseName();
 
   if (format === "json") {
     saveBlob(`${baseName}.json`, "application/json", JSON.stringify(state.rows, null, 2));
     return;
   }
 
-  const headers = Object.keys(state.rows[0]);
-  const csv = [
+  const csv = rowsToCsv(state.rows);
+  saveBlob(`${baseName}.csv`, "text/csv;charset=utf-8", `\uFEFF${csv}`);
+}
+
+async function uploadRows() {
+  const url = els.collectorUrl.value.trim();
+  if (!url || !state.rows.length || state.uploadInProgress) return;
+
+  state.uploadInProgress = true;
+  els.uploadButton.disabled = true;
+  els.uploadStatus.textContent = "送信状態: 送信中";
+
+  const payload = {
+    fileName: `${outputBaseName()}.csv`,
+    participantId: els.participantId.value.trim(),
+    stimulusName: els.stimulusName.value.trim(),
+    note: els.sessionNote.value.trim(),
+    rowCount: state.rows.length,
+    csv: rowsToCsv(state.rows),
+    rows: state.rows,
+  };
+
+  try {
+    await fetch(url, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+    });
+    els.uploadStatus.textContent = `送信状態: 送信しました (${state.rows.length}行)`;
+    setStatus("CSVを送信しました", "live");
+  } catch (error) {
+    console.error(error);
+    els.uploadStatus.textContent = "送信状態: 送信に失敗";
+    setStatus("CSV送信に失敗", "warn");
+  } finally {
+    state.uploadInProgress = false;
+    els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
+  }
+}
+
+function rowsToCsv(rows) {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  return [
     headers.join(","),
-    ...state.rows.map((row) => headers.map((key) => csvCell(row[key])).join(",")),
+    ...rows.map((row) => headers.map((key) => csvCell(row[key])).join(",")),
   ].join("\n");
-  saveBlob(`${baseName}.csv`, "text/csv;charset=utf-8", csv);
+}
+
+function outputBaseName() {
+  return [
+    "body-response",
+    els.participantId.value.trim() || "participant",
+    new Date().toISOString().replace(/[:.]/g, "-"),
+  ].join("_");
 }
 
 function csvCell(value) {
@@ -590,13 +714,52 @@ function formatDuration(ms) {
   return `${minutes}:${seconds}`;
 }
 
+function acceptConsent() {
+  if (!els.consentCheck.checked) return;
+  state.consented = true;
+  els.consentPanel.classList.add("hidden");
+  setStatus("待機中", "idle");
+}
+
+function restoreCollectionSettings() {
+  els.collectorUrl.value = localStorage.getItem(collectorUrlKey) || "";
+  els.autoUploadCheck.checked = localStorage.getItem(autoUploadKey) === "true";
+  els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
+}
+
+function saveCollectionSettings() {
+  localStorage.setItem(collectorUrlKey, els.collectorUrl.value.trim());
+  localStorage.setItem(autoUploadKey, String(els.autoUploadCheck.checked));
+  els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
+}
+
+function clearCollectionSettings() {
+  els.collectorUrl.value = "";
+  els.autoUploadCheck.checked = false;
+  localStorage.removeItem(collectorUrlKey);
+  localStorage.removeItem(autoUploadKey);
+  els.uploadButton.disabled = true;
+  els.uploadStatus.textContent = "送信状態: 未送信";
+}
+
+els.consentCheck.addEventListener("change", () => {
+  els.consentButton.disabled = !els.consentCheck.checked;
+});
+els.consentButton.addEventListener("click", acceptConsent);
 els.startButton.addEventListener("click", startCamera);
+els.stopCameraButton.addEventListener("click", stopCamera);
+els.cameraFacing.addEventListener("change", switchCamera);
 els.recordButton.addEventListener("click", toggleRecording);
 els.baselineButton.addEventListener("click", startBaseline);
 els.resetBaselineButton.addEventListener("click", resetBaseline);
 els.markerButton.addEventListener("click", addMarker);
 els.downloadCsvButton.addEventListener("click", () => download("csv"));
 els.downloadJsonButton.addEventListener("click", () => download("json"));
+els.uploadButton.addEventListener("click", uploadRows);
+els.collectorUrl.addEventListener("change", saveCollectionSettings);
+els.autoUploadCheck.addEventListener("change", saveCollectionSettings);
+els.clearUploadButton.addEventListener("click", clearCollectionSettings);
 window.addEventListener("resize", fitCanvases);
+restoreCollectionSettings();
 updateCapabilities();
 drawChart();

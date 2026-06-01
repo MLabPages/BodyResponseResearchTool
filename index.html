@@ -11,6 +11,25 @@
     <script src="./app.js" defer></script>
   </head>
   <body>
+    <section id="consentPanel" class="consent-screen" aria-label="同意確認">
+      <div class="consent-box">
+        <h1>調査参加の確認</h1>
+        <p>
+          このツールはカメラ映像を端末内で解析し、身体反応の推定指標だけを記録します。映像そのものは保存・送信しません。
+        </p>
+        <ul>
+          <li>保存対象は時刻、被験者ID、刺激名、メモ、推定指標、マーカーです。</li>
+          <li>快/不快や感情を断定するものではなく、探索的な身体反応指標として扱います。</li>
+          <li>CSV自動回収を有効にした場合、推定指標データだけが指定された回収先へ送信されます。</li>
+        </ul>
+        <label class="check-line">
+          <input id="consentCheck" type="checkbox" />
+          上記を理解し、カメラを使った測定に同意します。
+        </label>
+        <button id="consentButton" class="primary-button" type="button" disabled>測定画面へ進む</button>
+      </div>
+    </section>
+
     <main class="app-shell">
       <section class="workspace" aria-label="カメラ解析">
         <div class="camera-stage">
@@ -23,6 +42,7 @@
               カメラ映像を端末内で解析し、標準指標・探索指標・品質指標として時系列で記録します。
             </p>
             <button id="startButton" class="primary-button" type="button">カメラを開始</button>
+            <button id="stopCameraButton" type="button" disabled>撮影停止</button>
           </div>
         </div>
 
@@ -57,6 +77,13 @@
           <label>
             メモ
             <textarea id="sessionNote" rows="3" placeholder="任意の観察メモ"></textarea>
+          </label>
+          <label>
+            カメラ
+            <select id="cameraFacing">
+              <option value="user">前面カメラ</option>
+              <option value="environment">外カメラ</option>
+            </select>
           </label>
         </section>
 
@@ -126,6 +153,28 @@
           </div>
           <p class="fine-print">
             映像は保存しません。保存されるのは推定指標、時刻、入力メモだけです。
+          </p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>CSV自動回収</span>
+          </div>
+          <label>
+            回収先URL
+            <input id="collectorUrl" type="url" autocomplete="off" placeholder="Google Apps ScriptなどのURL" />
+          </label>
+          <label class="check-line compact">
+            <input id="autoUploadCheck" type="checkbox" />
+            記録停止時に自動送信
+          </label>
+          <div class="button-row">
+            <button id="uploadButton" type="button" disabled>今すぐ送信</button>
+            <button id="clearUploadButton" type="button">設定クリア</button>
+          </div>
+          <div id="uploadStatus" class="status-card">送信状態: 未送信</div>
+          <p class="fine-print">
+            送信されるのはCSV/JSONと同じ推定指標です。映像は送信しません。
           </p>
         </section>
 
