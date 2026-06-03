@@ -15,6 +15,17 @@ const els = {
   markerButton: document.getElementById("markerButton"),
   downloadCsvButton: document.getElementById("downloadCsvButton"),
   downloadJsonButton: document.getElementById("downloadJsonButton"),
+  showResultsButton: document.getElementById("showResultsButton"),
+  resultsPanel: document.getElementById("resultsPanel"),
+  closeResultsButton: document.getElementById("closeResultsButton"),
+  resultTitle: document.getElementById("resultTitle"),
+  resultRowCount: document.getElementById("resultRowCount"),
+  resultMaxMotion: document.getElementById("resultMaxMotion"),
+  resultMaxFace: document.getElementById("resultMaxFace"),
+  resultAvgQuality: document.getElementById("resultAvgQuality"),
+  resultMarkerCount: document.getElementById("resultMarkerCount"),
+  resultChart: document.getElementById("resultChart"),
+  resultRows: document.getElementById("resultRows"),
   collectorUrl: document.getElementById("collectorUrl"),
   autoUploadCheck: document.getElementById("autoUploadCheck"),
   uploadButton: document.getElementById("uploadButton"),
@@ -519,6 +530,7 @@ function maybeRecord(now) {
   state.lastRecordedAt = now;
   els.downloadCsvButton.disabled = state.rows.length === 0;
   els.downloadJsonButton.disabled = state.rows.length === 0;
+  els.showResultsButton.disabled = state.rows.length === 0;
   els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
 }
 
@@ -564,6 +576,10 @@ function toggleRecording() {
     state.lastRecordedAt = 0;
     state.rows = [];
     state.markers = [];
+    els.showResultsButton.disabled = true;
+    els.downloadCsvButton.disabled = true;
+    els.downloadJsonButton.disabled = true;
+    els.uploadButton.disabled = true;
     els.recordButton.textContent = "記録停止";
     setStatus("記録中", "live");
   } else {
@@ -571,6 +587,7 @@ function toggleRecording() {
     setStatus("解析中", "live");
     els.downloadCsvButton.disabled = state.rows.length === 0;
     els.downloadJsonButton.disabled = state.rows.length === 0;
+    els.showResultsButton.disabled = state.rows.length === 0;
     els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
     if (state.suppressAutoUploadOnce) {
       state.suppressAutoUploadOnce = false;
@@ -588,9 +605,133 @@ function addMarker() {
     const now = performance.now();
     state.rows.push(currentRow(now, label));
     state.lastRecordedAt = now;
+    els.showResultsButton.disabled = state.rows.length === 0;
     els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
   }
   setStatus(`${label} を追加`, "live");
+}
+
+function showResults() {
+  if (!state.rows.length) return;
+  renderResults(state.rows);
+  els.resultsPanel.classList.remove("hidden");
+}
+
+function closeResults() {
+  els.resultsPanel.classList.add("hidden");
+}
+
+function renderResults(rows) {
+  const participant = els.participantId.value.trim() || rows[0]?.participant_id || "participant";
+  const stimulus = els.stimulusName.value.trim() || rows[0]?.stimulus_name || "session";
+  els.resultTitle.textContent = `${participant} / ${stimulus}`;
+  els.resultRowCount.textContent = String(rows.length);
+  els.resultMaxMotion.textContent = String(maxRows(rows, "standard_motion_intensity"));
+  els.resultMaxFace.textContent = String(maxRows(rows, "exploratory_facial_movement_intensity"));
+  els.resultAvgQuality.textContent = String(avgRows(rows, "quality_score"));
+  els.resultMarkerCount.textContent = String(rows.filter((row) => row.marker).length);
+  els.resultRows.innerHTML = rows
+    .slice(0, 160)
+    .map(
+      (row) => `
+        <tr>
+          <td>${row.timestamp_ms}</td>
+          <td>${escapeHtml(row.marker || "")}</td>
+          <td>${row.standard_motion_intensity}</td>
+          <td>${row.standard_posture_change}</td>
+          <td>${escapeHtml(row.standard_head_pose_label || "")}</td>
+          <td>${row.standard_blink_rate_per_min}</td>
+          <td>${row.exploratory_facial_movement_intensity}</td>
+          <td>${row.exploratory_stillness}</td>
+          <td>${row.quality_score}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  drawResultChart(rows);
+}
+
+function drawResultChart(rows) {
+  const canvas = els.resultChart;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const width = canvas.width;
+  const height = canvas.height;
+  const pad = { left: 44 * dpr, right: 16 * dpr, top: 12 * dpr, bottom: 28 * dpr };
+  const chartWidth = width - pad.left - pad.right;
+  const chartHeight = height - pad.top - pad.bottom;
+  const minTime = rows[0]?.timestamp_ms || 0;
+  const maxTime = rows[rows.length - 1]?.timestamp_ms || 1;
+  const series = [
+    ["standard_motion_intensity", "#176c64"],
+    ["standard_posture_change", "#b85c1f"],
+    ["exploratory_facial_movement_intensity", "#865a87"],
+    ["quality_score", "#3d5f91"],
+  ];
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#fbfcfa";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "#d7ded8";
+  ctx.lineWidth = dpr;
+  ctx.fillStyle = "#65716b";
+  ctx.font = `${12 * dpr}px sans-serif`;
+
+  for (let i = 0; i <= 4; i += 1) {
+    const y = pad.top + chartHeight * (i / 4);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(width - pad.right, y);
+    ctx.stroke();
+    ctx.fillText(String(100 - i * 25), 6 * dpr, y + 4 * dpr);
+  }
+
+  for (const row of rows.filter((item) => item.marker)) {
+    const x = pad.left + ((row.timestamp_ms - minTime) / Math.max(1, maxTime - minTime)) * chartWidth;
+    ctx.strokeStyle = "#17211d";
+    ctx.setLineDash([5 * dpr, 5 * dpr]);
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, pad.top + chartHeight);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#17211d";
+    ctx.fillText(row.marker, x + 6 * dpr, pad.top + 16 * dpr);
+  }
+
+  for (const [key, color] of series) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3 * dpr;
+    ctx.beginPath();
+    rows.forEach((row, index) => {
+      const x = pad.left + ((row.timestamp_ms - minTime) / Math.max(1, maxTime - minTime)) * chartWidth;
+      const y = pad.top + chartHeight - (Number(row[key] || 0) / 100) * chartHeight;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+}
+
+function maxRows(rows, key) {
+  return Math.max(...rows.map((row) => Number(row[key] || 0)));
+}
+
+function avgRows(rows, key) {
+  return Math.round(rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / Math.max(1, rows.length));
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  })[char]);
 }
 
 function startBaseline() {
@@ -755,11 +896,18 @@ els.resetBaselineButton.addEventListener("click", resetBaseline);
 els.markerButton.addEventListener("click", addMarker);
 els.downloadCsvButton.addEventListener("click", () => download("csv"));
 els.downloadJsonButton.addEventListener("click", () => download("json"));
+els.showResultsButton.addEventListener("click", showResults);
+els.closeResultsButton.addEventListener("click", closeResults);
 els.uploadButton.addEventListener("click", uploadRows);
 els.collectorUrl.addEventListener("change", saveCollectionSettings);
 els.autoUploadCheck.addEventListener("change", saveCollectionSettings);
 els.clearUploadButton.addEventListener("click", clearCollectionSettings);
-window.addEventListener("resize", fitCanvases);
+window.addEventListener("resize", () => {
+  fitCanvases();
+  if (!els.resultsPanel.classList.contains("hidden") && state.rows.length) {
+    drawResultChart(state.rows);
+  }
+});
 restoreCollectionSettings();
 updateCapabilities();
 drawChart();

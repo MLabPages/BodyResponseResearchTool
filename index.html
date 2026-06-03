@@ -151,6 +151,7 @@
             <button id="downloadCsvButton" type="button" disabled>CSV</button>
             <button id="downloadJsonButton" type="button" disabled>JSON</button>
           </div>
+          <button id="showResultsButton" type="button" disabled>この場で結果を見る</button>
           <p class="fine-print">
             映像は保存しません。保存されるのは推定指標、時刻、入力メモだけです。
           </p>
@@ -192,5 +193,69 @@
         </section>
       </aside>
     </main>
+
+    <section id="resultsPanel" class="results-screen hidden" aria-label="測定結果">
+      <div class="results-box">
+        <div class="results-head">
+          <div>
+            <span class="label">測定結果</span>
+            <h2 id="resultTitle">セッション結果</h2>
+          </div>
+          <button id="closeResultsButton" type="button">閉じる</button>
+        </div>
+
+        <div class="result-grid">
+          <div class="metric">
+            <span>行数</span>
+            <strong id="resultRowCount">--</strong>
+          </div>
+          <div class="metric">
+            <span>最大体動量</span>
+            <strong id="resultMaxMotion">--</strong>
+          </div>
+          <div class="metric">
+            <span>最大表情変化</span>
+            <strong id="resultMaxFace">--</strong>
+          </div>
+          <div class="metric">
+            <span>平均品質</span>
+            <strong id="resultAvgQuality">--</strong>
+          </div>
+          <div class="metric">
+            <span>マーカー数</span>
+            <strong id="resultMarkerCount">--</strong>
+          </div>
+        </div>
+
+        <div class="result-chart-panel">
+          <div class="result-legend">
+            <span><i style="background: #176c64"></i>体動量</span>
+            <span><i style="background: #b85c1f"></i>姿勢変化</span>
+            <span><i style="background: #865a87"></i>表情変化</span>
+            <span><i style="background: #3d5f91"></i>品質</span>
+          </div>
+          <canvas id="resultChart" width="1100" height="320"></canvas>
+        </div>
+
+        <div class="result-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>時刻(ms)</th>
+                <th>マーカー</th>
+                <th>体動量</th>
+                <th>姿勢変化</th>
+                <th>顔向き</th>
+                <th>まばたき/min</th>
+                <th>表情変化</th>
+                <th>静止度</th>
+                <th>品質</th>
+              </tr>
+            </thead>
+            <tbody id="resultRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </body>
 </html>
