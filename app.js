@@ -99,6 +99,8 @@ const sampleSize = { width: 96, height: 72 };
 const maxChartPoints = 240;
 const motionThreshold = 18;
 const baselineDurationMs = 15000;
+const defaultCollectorUrl =
+  "https://script.google.com/macros/s/AKfycbyjychBnbo4FGtoXed-HN8bs73L0avDPjr0kP1bcXZnpUMcwSH3Jbt5Kgf0ZIt3_kC8/exec";
 const collectorUrlKey = "bodyResponseCollectorUrl";
 const autoUploadKey = "bodyResponseAutoUpload";
 
@@ -871,9 +873,10 @@ function acceptConsent() {
 }
 
 function restoreCollectionSettings() {
-  els.collectorUrl.value = localStorage.getItem(collectorUrlKey) || "";
-  els.autoUploadCheck.checked = localStorage.getItem(autoUploadKey) === "true";
+  els.collectorUrl.value = localStorage.getItem(collectorUrlKey) || defaultCollectorUrl;
+  els.autoUploadCheck.checked = localStorage.getItem(autoUploadKey) !== "false";
   els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
+  els.uploadStatus.textContent = "送信状態: 回収先URL設定済み";
 }
 
 function saveCollectionSettings() {
@@ -883,12 +886,12 @@ function saveCollectionSettings() {
 }
 
 function clearCollectionSettings() {
-  els.collectorUrl.value = "";
-  els.autoUploadCheck.checked = false;
+  els.collectorUrl.value = defaultCollectorUrl;
+  els.autoUploadCheck.checked = true;
   localStorage.removeItem(collectorUrlKey);
   localStorage.removeItem(autoUploadKey);
-  els.uploadButton.disabled = true;
-  els.uploadStatus.textContent = "送信状態: 未送信";
+  els.uploadButton.disabled = state.rows.length === 0;
+  els.uploadStatus.textContent = "送信状態: 初期URLに戻しました";
 }
 
 els.consentCheck.addEventListener("change", () => {
