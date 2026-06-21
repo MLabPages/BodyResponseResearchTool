@@ -27,6 +27,7 @@ const els = {
   resultChart: document.getElementById("resultChart"),
   resultRows: document.getElementById("resultRows"),
   collectorUrl: document.getElementById("collectorUrl"),
+  collectorToken: document.getElementById("collectorToken"),
   autoUploadCheck: document.getElementById("autoUploadCheck"),
   uploadButton: document.getElementById("uploadButton"),
   clearUploadButton: document.getElementById("clearUploadButton"),
@@ -102,6 +103,7 @@ const baselineDurationMs = 15000;
 const defaultCollectorUrl =
   "https://script.google.com/macros/s/AKfycbyjychBnbo4FGtoXed-HN8bs73L0avDPjr0kP1bcXZnpUMcwSH3Jbt5Kgf0ZIt3_kC8/exec";
 const collectorUrlKey = "bodyResponseCollectorUrl";
+const collectorTokenKey = "bodyResponseCollectorToken";
 const autoUploadKey = "bodyResponseAutoUpload";
 
 function setStatus(text, mode = "idle") {
@@ -799,6 +801,7 @@ async function uploadRows() {
     participantId: els.participantId.value.trim(),
     stimulusName: els.stimulusName.value.trim(),
     note: els.sessionNote.value.trim(),
+    collectorToken: els.collectorToken.value.trim(),
     rowCount: state.rows.length,
     csv: rowsToCsv(state.rows),
     rows: state.rows,
@@ -873,7 +876,13 @@ function acceptConsent() {
 }
 
 function restoreCollectionSettings() {
+  const params = new URLSearchParams(window.location.search);
+  const tokenFromUrl = params.get("collectorToken") || params.get("key") || "";
   els.collectorUrl.value = localStorage.getItem(collectorUrlKey) || defaultCollectorUrl;
+  els.collectorToken.value = tokenFromUrl || localStorage.getItem(collectorTokenKey) || "";
+  if (tokenFromUrl) {
+    localStorage.setItem(collectorTokenKey, tokenFromUrl);
+  }
   els.autoUploadCheck.checked = localStorage.getItem(autoUploadKey) !== "false";
   els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
   els.uploadStatus.textContent = "送信状態: 回収先URL設定済み";
@@ -881,14 +890,17 @@ function restoreCollectionSettings() {
 
 function saveCollectionSettings() {
   localStorage.setItem(collectorUrlKey, els.collectorUrl.value.trim());
+  localStorage.setItem(collectorTokenKey, els.collectorToken.value.trim());
   localStorage.setItem(autoUploadKey, String(els.autoUploadCheck.checked));
   els.uploadButton.disabled = state.rows.length === 0 || !els.collectorUrl.value.trim();
 }
 
 function clearCollectionSettings() {
   els.collectorUrl.value = defaultCollectorUrl;
+  els.collectorToken.value = "";
   els.autoUploadCheck.checked = true;
   localStorage.removeItem(collectorUrlKey);
+  localStorage.removeItem(collectorTokenKey);
   localStorage.removeItem(autoUploadKey);
   els.uploadButton.disabled = state.rows.length === 0;
   els.uploadStatus.textContent = "送信状態: 初期URLに戻しました";
@@ -911,6 +923,7 @@ els.showResultsButton.addEventListener("click", showResults);
 els.closeResultsButton.addEventListener("click", closeResults);
 els.uploadButton.addEventListener("click", uploadRows);
 els.collectorUrl.addEventListener("change", saveCollectionSettings);
+els.collectorToken.addEventListener("change", saveCollectionSettings);
 els.autoUploadCheck.addEventListener("change", saveCollectionSettings);
 els.clearUploadButton.addEventListener("click", clearCollectionSettings);
 window.addEventListener("resize", () => {
