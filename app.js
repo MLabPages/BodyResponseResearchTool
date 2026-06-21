@@ -184,10 +184,7 @@ async function startCamera(options = {}) {
   try {
     setStatus("カメラ許可を確認中", "warn");
     state.facingMode = els.cameraFacing.value;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { ideal: state.facingMode } },
-      audio: false,
-    });
+    const stream = await requestCameraStream(state.facingMode);
     els.video.srcObject = stream;
     await els.video.play();
     state.startedAt = performance.now();
@@ -208,9 +205,46 @@ async function startCamera(options = {}) {
   } catch (error) {
     console.error(error);
     setStatus("カメラを開始できませんでした", "warn");
-    els.permissionPanel.querySelector("p").textContent =
-      "ブラウザのカメラ許可、または localhost / HTTPS で開いているかを確認してください。";
+    els.permissionPanel.style.display = "";
+    els.startButton.disabled = false;
+    els.stopCameraButton.disabled = true;
+    els.permissionPanel.querySelector("p").textContent = cameraErrorMessage(error);
   }
+}
+
+async function requestCameraStream(facingMode) {
+  const base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: { ...base, facingMode: { ideal: facingMode } },
+      audio: false,
+    });
+  } catch (error) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+      throw error;
+    }
+    return navigator.mediaDevices.getUserMedia({ video: base, audio: false });
+  }
+}
+
+function cameraErrorMessage(error) {
+  const name = error?.name || "UnknownError";
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return "このブラウザではカメラ機能が使えません。Chrome / Edge / Safari の最新版で、HTTPSの公開URLから開いてください。";
+  }
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "カメラ許可が拒否されています。ブラウザのアドレスバー付近のカメラ権限、またはOSのプライバシー設定でカメラを許可してください。";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "使用できるカメラが見つかりません。外部カメラの接続、またはPCのカメラ設定を確認してください。";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "カメラを開始できません。Zoom、Teams、カメラアプリなど別のアプリがカメラを使用していないか確認してください。";
+  }
+  if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+    return "選択したカメラ条件で開始できませんでした。前面カメラに切り替えるか、ブラウザを再読み込みしてください。";
+  }
+  return `カメラを開始できませんでした (${name})。ブラウザのカメラ許可、HTTPSのURL、別アプリのカメラ使用状況を確認してください。`;
 }
 
 function stopCamera() {
