@@ -171,7 +171,8 @@ async function initModels() {
   updateCapabilities();
 }
 
-async function startCamera() {
+async function startCamera(options = {}) {
+  const { autoRecord = true } = options;
   if (!state.consented) {
     setStatus("同意確認が必要です", "warn");
     return;
@@ -197,6 +198,9 @@ async function startCamera() {
     fitCanvases();
     await initModels();
     state.animationFrameId = requestAnimationFrame(loop);
+    if (autoRecord && !state.recording) {
+      toggleRecording();
+    }
   } catch (error) {
     console.error(error);
     setStatus("カメラを開始できませんでした", "warn");
@@ -206,6 +210,7 @@ async function startCamera() {
 }
 
 function stopCamera() {
+  const hadRows = state.rows.length > 0;
   if (state.recording) {
     toggleRecording();
   }
@@ -231,6 +236,9 @@ function stopCamera() {
   els.markerButton.disabled = true;
   setStatus("撮影停止", "idle");
   updateCapabilities();
+  if (state.rows.length || hadRows) {
+    showResults();
+  }
 }
 
 async function switchCamera() {
@@ -242,7 +250,7 @@ async function switchCamera() {
     toggleRecording();
   }
   stopCamera();
-  await startCamera();
+  await startCamera({ autoRecord: false });
   if (wasRecording) {
     toggleRecording();
   }
@@ -613,8 +621,8 @@ function addMarker() {
 
 function showResults() {
   if (!state.rows.length) return;
-  renderResults(state.rows);
   els.resultsPanel.classList.remove("hidden");
+  requestAnimationFrame(() => renderResults(state.rows));
 }
 
 function closeResults() {
